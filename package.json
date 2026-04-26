@@ -1,0 +1,25 @@
+{
+  "name": "@samvallad33/ahagraph",
+  "version": "0.0.0",
+  "description": "AhaGraph maps the explanations, confusions, and concepts that make code click. Powered by Vestige.",
+  "type": "module",
+  "bin": {
+    "ahagraph": "./src/index.js"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/samvallad33/ahagraph.git"
+  },
+  "bugs": {
+    "url": "https://github.com/samvallad33/ahagraph/issues"
+  },
+  "homepage": "https://github.com/samvallad33/ahagraph#readme"
+}
