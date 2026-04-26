@@ -1,25 +1,46 @@
 {
   "name": "@samvallad33/ahagraph",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "AhaGraph maps the explanations, confusions, and concepts that make code click. Powered by Vestige.",
   "type": "module",
   "bin": {
-    "ahagraph": "./src/index.js"
+    "ahagraph": "dist/src/index.js"
   },
   "files": [
-    "src",
-    "README.md"
+    "dist",
+    "README.md",
+    "SECURITY.md",
+    "demo"
   ],
-  "publishConfig": {
-    "access": "public"
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "smoke": "tsx scripts/smoke.ts",
+    "start": "node dist/src/index.js",
+    "typecheck": "tsc --noEmit"
   },
-  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "vestige",
+    "ahagraph",
+    "learning",
+    "developer-tools",
+    "knowledge-graph",
+    "spaced-repetition",
+    "ai-memory"
+  ],
+  "author": "Sam Valladares",
+  "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/samvallad33/ahagraph.git"
   },
-  "bugs": {
-    "url": "https://github.com/samvallad33/ahagraph/issues"
+  "engines": {
+    "node": ">=20"
   },
-  "homepage": "https://github.com/samvallad33/ahagraph#readme"
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
 }
