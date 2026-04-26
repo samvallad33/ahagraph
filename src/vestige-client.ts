@@ -76,7 +76,7 @@ export class VestigeClient {
       stdio: ["pipe", "pipe", "pipe"],
       env: {
         ...childEnv(),
-        VESTIGE_DASHBOARD_ENABLED: process.env.VESTIGE_DASHBOARD_ENABLED ?? "false",
+        VESTIGE_DASHBOARD_ENABLED: process.env.VESTIGE_DASHBOARD_ENABLED ?? "true",
         VESTIGE_DASHBOARD_PORT: process.env.VESTIGE_DASHBOARD_PORT ?? "3937",
         VESTIGE_HTTP_PORT: process.env.VESTIGE_HTTP_PORT ?? "3938"
       }
