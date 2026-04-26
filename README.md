@@ -294,8 +294,11 @@ Public demo hooks:
 ```bash
 npm run typecheck
 npm run build
-VESTIGE_MCP_ARGS="--data-dir /tmp/ahagraph-smoke" npm run smoke
+VESTIGE_MCP_COMMAND=vestige-mcp npm run smoke
+VESTIGE_MCP_COMMAND=vestige-mcp npm run e2e
 ```
+
+`npm run e2e` builds the package, creates a fresh disposable Vestige database, calls every AhaGraph tool over MCP, verifies markdown/HTML escaping, checks for a gold aha node in `graph`, and confirms the Vestige dashboard serves AhaGraph color-mode assets.
 
 ## Powered By Vestige
 

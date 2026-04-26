@@ -691,9 +691,10 @@ async function graph(runtime: Runtime, args: Args): Promise<JsonValue> {
   const centerId = optionalString(args, "center_id", MAX_SHORT_TEXT);
   const depth = Math.max(1, Math.min(3, Math.floor(optionalNumber(args, "depth") ?? 2)));
   const maxNodes = Math.max(1, Math.min(200, Math.floor(optionalNumber(args, "max_nodes") ?? 50)));
+  const resolvedCenterId = centerId ?? (query ? await resolveGraphCenterId(runtime, query) : undefined);
 
   const vestige = await runtime.vestige.callTool("memory_graph", {
-    ...(centerId ? { center_id: centerId } : { query: safeSearchQuery(query ?? "ahagraph aha confusion failure learning") }),
+    ...(resolvedCenterId ? { center_id: resolvedCenterId } : {}),
     depth,
     max_nodes: maxNodes
   });
@@ -701,7 +702,9 @@ async function graph(runtime: Runtime, args: Args): Promise<JsonValue> {
   return {
     ok: true,
     ahagraphTool: "graph",
-    delegatedTo: "vestige.memory_graph",
+    delegatedTo: resolvedCenterId ? ["vestige.search", "vestige.memory_graph"] : "vestige.memory_graph",
+    query: query ?? null,
+    centerId: resolvedCenterId ?? null,
     dashboardUrl: dashboardUrl(),
     visualLegend: {
       aha: { color: "gold", meaning: "What made a concept click." },
@@ -710,6 +713,29 @@ async function graph(runtime: Runtime, args: Args): Promise<JsonValue> {
     },
     graph: annotateGraph(vestige)
   };
+}
+
+async function resolveGraphCenterId(runtime: Runtime, query: string): Promise<string | undefined> {
+  const ahaResult = await runtime.vestige.callTool("search", {
+    query: safeSearchQuery(`${query} aha analogy what clicked`),
+    limit: 5,
+    detail_level: "brief",
+    include_types: ["concept"],
+    context_topics: safeContextTopics([...AHAGRAPH_CONTEXT, "aha", "analogy", "learning"]),
+    retrieval_mode: "balanced"
+  });
+  const ahaId = extractFirstMemoryIdWithTag(ahaResult, "aha") ?? extractFirstMemoryId(ahaResult);
+  if (ahaId) return ahaId;
+
+  const fallbackResult = await runtime.vestige.callTool("search", {
+    query: safeSearchQuery(query),
+    limit: 1,
+    detail_level: "brief",
+    include_types: ["concept", "note", "pattern"],
+    context_topics: safeContextTopics([...AHAGRAPH_CONTEXT, "aha", "confusion", "failure", "learning"]),
+    retrieval_mode: "balanced"
+  });
+  return extractFirstMemoryId(fallbackResult);
 }
 
 async function shareAhaCard(runtime: Runtime, args: Args): Promise<JsonValue> {
@@ -1006,8 +1032,9 @@ function dashboardUrl(): string {
 }
 
 function extractFirstMemoryId(value: JsonValue): string | undefined {
-  if (!isObject(value)) return undefined;
-  const results = value.results;
+  const payload = unwrapToolPayload(value);
+  if (!isObject(payload)) return undefined;
+  const results = payload.results;
   if (!Array.isArray(results)) return undefined;
   for (const item of results) {
     if (isObject(item) && typeof item.id === "string") {
@@ -1017,11 +1044,24 @@ function extractFirstMemoryId(value: JsonValue): string | undefined {
   return undefined;
 }
 
+function extractFirstMemoryIdWithTag(value: JsonValue, tag: string): string | undefined {
+  const payload = unwrapToolPayload(value);
+  if (!isObject(payload)) return undefined;
+  const results = payload.results;
+  if (!Array.isArray(results)) return undefined;
+  for (const item of results) {
+    if (!isObject(item) || typeof item.id !== "string") continue;
+    if (stringArray(item.tags).includes(tag)) return item.id;
+  }
+  return undefined;
+}
+
 function annotateGraph(value: JsonValue): JsonValue {
-  if (!isObject(value) || !Array.isArray(value.nodes)) return value;
+  const payload = unwrapToolPayload(value);
+  if (!isObject(payload) || !Array.isArray(payload.nodes)) return payload;
   return {
-    ...value,
-    nodes: value.nodes.map((node) => {
+    ...payload,
+    nodes: payload.nodes.map((node) => {
       if (!isObject(node)) return node;
       const kind = classifyNode(node);
       return {
@@ -1031,6 +1071,20 @@ function annotateGraph(value: JsonValue): JsonValue {
       };
     })
   };
+}
+
+function unwrapToolPayload(value: JsonValue): JsonValue {
+  if (!isObject(value) || !Array.isArray(value.content)) return value;
+  const text = value.content
+    .map((item) => (isObject(item) && typeof item.text === "string" ? item.text : ""))
+    .join("\n")
+    .trim();
+  if (!text) return value;
+  try {
+    return JSON.parse(text) as JsonValue;
+  } catch {
+    return text;
+  }
 }
 
 function classifyNode(node: JsonObject): keyof typeof AHAGRAPH_NODE_COLORS {

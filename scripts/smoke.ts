@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { callAhaGraphTool } from "../src/tools.js";
 import { VestigeClient } from "../src/vestige-client.js";
 
-process.env.VESTIGE_MCP_ARGS ??= "--data-dir /tmp/ahagraph-smoke";
+process.env.VESTIGE_MCP_ARGS ??= `--data-dir ${path.join(
+  tmpdir(),
+  `ahagraph-smoke-${Date.now()}-${process.pid}.sqlite`
+)}`;
 
 const vestige = new VestigeClient();
 
@@ -91,6 +96,8 @@ try {
 
   assert.equal(graph.isError, undefined, extractText(graph));
   assert.match(extractText(graph), /visualLegend|memory_graph|ahagraphTool/i);
+  const graphPayload = JSON.parse(extractText(graph));
+  assert.equal(graphPayload.graph.nodes.some((node: { ahagraphColor?: string }) => node.ahagraphColor === "gold"), true);
 
   const review = await callAhaGraphTool(runtime, "due_for_review", {
     topic: "Rust ownership",
