@@ -42,7 +42,7 @@ Title: **I am teaching Claude to remember what made code click.**
 11. End on the dashboard URL:
 
    ```text
-   http://localhost:3937/dashboard?colorMode=ahagraph
+   http://localhost:3937/dashboard/graph?colorMode=ahagraph
    ```
 
    The Tuesday demo should show aha memories as gold, confusions as red, and failures as gray when the Vestige dashboard is running with AhaGraph color mode.

@@ -1028,7 +1028,7 @@ function safeContextTopics(values: string[]): string[] {
 function dashboardUrl(): string {
   const rawPort = process.env.VESTIGE_DASHBOARD_PORT ?? "3937";
   const port = /^\d{1,5}$/.test(rawPort) ? rawPort : "3937";
-  return `http://localhost:${port}/dashboard?colorMode=ahagraph`;
+  return `http://localhost:${port}/dashboard/graph?colorMode=ahagraph`;
 }
 
 function extractFirstMemoryId(value: JsonValue): string | undefined {

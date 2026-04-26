@@ -215,7 +215,7 @@ async function runE2e(): Promise<void> {
     max_nodes: 30
   });
   assert.equal(graph.ok, true);
-  assert.equal(graph.dashboardUrl, `http://localhost:${dashboardPort}/dashboard?colorMode=ahagraph`);
+  assert.equal(graph.dashboardUrl, `http://localhost:${dashboardPort}/dashboard/graph?colorMode=ahagraph`);
   assert.equal(graph.centerId !== null, true);
   const graphPayload = asObject(graph.graph);
   const graphNodes = asArray(graphPayload.nodes);
@@ -237,7 +237,7 @@ async function runE2e(): Promise<void> {
   assert.equal(invalid.isError, true);
   assert.match(toolText(invalid), /Missing required string argument: text/);
 
-  const dashboardUrl = `http://127.0.0.1:${dashboardPort}/dashboard?colorMode=ahagraph`;
+  const dashboardUrl = `http://127.0.0.1:${dashboardPort}/dashboard/graph?colorMode=ahagraph`;
   await assertDashboardServedWithAhaGraphAssets(dashboardUrl);
 
   console.log(
