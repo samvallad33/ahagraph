@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { callAhaGraphTool } from "../src/tools.js";
 import { VestigeClient } from "../src/vestige-client.js";
 
+process.env.VESTIGE_MCP_ARGS ??= "--data-dir /tmp/ahagraph-smoke";
+
 const vestige = new VestigeClient();
 
 try {
@@ -100,12 +102,16 @@ try {
 
   const shareCard = await callAhaGraphTool(runtime, "share_aha_card", {
     concept: "Rust ownership",
-    public_aha: "Ownership clicked when I stopped thinking about variables and started thinking about who currently has the book.",
+    public_aha: "Ownership clicked as x](https://evil.example/login)[click instead of variables.",
     audience: "developers"
   });
 
   assert.equal(shareCard.isError, undefined, extractText(shareCard));
   assert.match(extractText(shareCard), /share_aha_card|Powered by AhaGraph|Rust ownership/i);
+  const sharePayload = JSON.parse(extractText(shareCard));
+  assert.equal(sharePayload.card.markdown.includes("](https://evil.example/login)"), false);
+  assert.equal(sharePayload.card.markdown.includes("x\\]\\("), true);
+  assert.equal(sharePayload.card.markdown.includes("\\)\\[click"), true);
 
   const teachMode = await callAhaGraphTool(runtime, "teach_differently", {
     topic: "React effects",

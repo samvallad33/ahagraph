@@ -2,6 +2,7 @@
 import { asObject, createLineReader, failure, success, writeJson, type JsonRpcRequest, type JsonValue } from "./protocol.js";
 import { callAhaGraphTool, tools } from "./tools.js";
 import { VestigeClient } from "./vestige-client.js";
+import { AHAGRAPH_VERSION } from "./version.js";
 
 const vestige = new VestigeClient();
 
@@ -39,7 +40,7 @@ async function handleLine(line: string): Promise<void> {
             protocolVersion: "2024-11-05",
             serverInfo: {
               name: "ahagraph",
-              version: "0.2.0"
+              version: AHAGRAPH_VERSION
             },
             capabilities: {
               tools: { listChanged: false },

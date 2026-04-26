@@ -1,6 +1,6 @@
 {
   "name": "ahagraph",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "AhaGraph maps the explanations, confusions, and concepts that make code click. Powered by Vestige.",
   "type": "module",
   "bin": {

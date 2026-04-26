@@ -29,6 +29,24 @@ Title: **I am teaching Claude to remember what made code click.**
 
 7. Show `graph` returning the visual nodes and the Vestige dashboard URL.
 
+8. Ask:
+
+   > Use AhaGraph to brief yourself before teaching me Zig comptime.
+
+9. Show `brief` and `synthesis` pulling the developer's remembered aha moments, confusions, review candidates, and failure guardrails into a teaching plan.
+
+10. Ask:
+
+   > Use AhaGraph to transfer my Rust ownership aha into Zig comptime, then open the graph.
+
+11. End on the dashboard URL:
+
+   ```text
+   http://localhost:3937/dashboard?colorMode=ahagraph
+   ```
+
+   The Tuesday demo should show aha memories as gold, confusions as red, and failures as gray when the Vestige dashboard is running with AhaGraph color mode.
+
 ## Hook
 
 I forgot how Rust ownership worked. Again.

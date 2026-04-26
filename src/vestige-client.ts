@@ -1,6 +1,10 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import readline from "node:readline";
 import type { JsonRpcId, JsonValue } from "./protocol.js";
+import { AHAGRAPH_VERSION } from "./version.js";
+
+const MAX_CHILD_LOG_BYTES = 64_000;
+const MAX_CHILD_LOG_CHUNK_BYTES = 4_000;
 
 interface PendingRequest {
   resolve: (value: JsonValue) => void;
@@ -14,11 +18,13 @@ export class VestigeClient {
   private initialized = false;
   private nextId = 1;
   private pending = new Map<JsonRpcId, PendingRequest>();
+  private childLogBytesForwarded = 0;
+  private childLogTruncated = false;
 
   constructor(
     private readonly command = process.env.VESTIGE_MCP_COMMAND ?? "vestige-mcp",
     private readonly args = splitArgs(process.env.VESTIGE_MCP_ARGS ?? ""),
-    private readonly timeoutMs = parseTimeoutMs(process.env.AHAGRAPH_CALL_TIMEOUT_MS ?? process.env.PATHFINDER_CALL_TIMEOUT_MS)
+    private readonly timeoutMs = parseTimeoutMs(process.env.AHAGRAPH_CALL_TIMEOUT_MS)
   ) {}
 
   async callTool(name: string, args: unknown): Promise<JsonValue> {
@@ -54,7 +60,7 @@ export class VestigeClient {
       capabilities: {},
       clientInfo: {
         name: "ahagraph",
-        version: "0.2.0"
+        version: AHAGRAPH_VERSION
       }
     });
     this.notify("notifications/initialized", {});
@@ -63,6 +69,8 @@ export class VestigeClient {
 
   private start(): void {
     if (this.child) return;
+    this.childLogBytesForwarded = 0;
+    this.childLogTruncated = false;
 
     this.child = spawn(this.command, this.args, {
       stdio: ["pipe", "pipe", "pipe"],
@@ -75,7 +83,7 @@ export class VestigeClient {
     });
 
     this.child.stderr.on("data", (chunk: Buffer) => {
-      process.stderr.write(`[vestige] ${chunk.toString()}`);
+      this.writeChildLog("vestige", chunk.toString());
     });
 
     this.child.on("exit", (code, signal) => {
@@ -127,7 +135,7 @@ export class VestigeClient {
   private handleLine(line: string): void {
     const trimmed = line.trim();
     if (!trimmed.startsWith("{")) {
-      if (trimmed) process.stderr.write(`[vestige stdout] ${trimmed}\n`);
+      if (trimmed) this.writeChildLog("vestige stdout", trimmed);
       return;
     }
 
@@ -135,7 +143,7 @@ export class VestigeClient {
     try {
       message = JSON.parse(trimmed) as typeof message;
     } catch {
-      process.stderr.write(`[vestige stdout] ${trimmed}\n`);
+      this.writeChildLog("vestige stdout", trimmed);
       return;
     }
 
@@ -165,6 +173,23 @@ export class VestigeClient {
     }
     this.pending.clear();
   }
+
+  private writeChildLog(source: string, raw: string): void {
+    if (this.childLogBytesForwarded >= MAX_CHILD_LOG_BYTES) {
+      if (!this.childLogTruncated) {
+        process.stderr.write(`[${source}] log output suppressed after ${MAX_CHILD_LOG_BYTES} bytes\n`);
+        this.childLogTruncated = true;
+      }
+      return;
+    }
+
+    const sanitized = stripAnsi(raw).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "");
+    const chunk = sanitized.length > MAX_CHILD_LOG_CHUNK_BYTES
+      ? `${sanitized.slice(0, MAX_CHILD_LOG_CHUNK_BYTES)}...[truncated]\n`
+      : sanitized;
+    this.childLogBytesForwarded += Buffer.byteLength(chunk, "utf8");
+    process.stderr.write(`[${source}] ${chunk.endsWith("\n") ? chunk : `${chunk}\n`}`);
+  }
 }
 
 function splitArgs(value: string): string[] {
@@ -175,6 +200,10 @@ function parseTimeoutMs(value: string | undefined): number {
   if (value === undefined) return 30_000;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 30_000;
+}
+
+function stripAnsi(value: string): string {
+  return value.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "");
 }
 
 function childEnv(): NodeJS.ProcessEnv {

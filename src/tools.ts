@@ -1,6 +1,7 @@
 import type { JsonValue, ToolCallResult } from "./protocol.js";
 import { jsonTextResult } from "./protocol.js";
 import type { VestigeClient } from "./vestige-client.js";
+import { AHAGRAPH_VERSION } from "./version.js";
 
 type Args = Record<string, JsonValue>;
 type JsonObject = Record<string, JsonValue>;
@@ -8,6 +9,13 @@ type JsonObject = Record<string, JsonValue>;
 const MAX_SHORT_TEXT = 240;
 const MAX_MEDIUM_TEXT = 1_000;
 const MAX_LONG_TEXT = 8_000;
+const AHAGRAPH_CONTEXT = ["ahagraph"];
+const AHAGRAPH_NODE_COLORS = {
+  aha: "gold",
+  confusion: "red",
+  failure: "gray",
+  learning: "blue"
+} as const;
 
 export interface ToolDefinition {
   name: string;
@@ -337,11 +345,11 @@ async function recall(runtime: Runtime, args: Args): Promise<JsonValue> {
   const limit = boundedLimit(args, 5, 10);
 
   const vestige = await runtime.vestige.callTool("search", {
-    query,
+    query: safeSearchQuery(query),
     limit,
     detail_level: "summary",
     include_types: ["concept"],
-    context_topics: ["ahagraph", "pathfinder", "aha", "analogy", "learning"],
+    context_topics: safeContextTopics([...AHAGRAPH_CONTEXT, "aha", "analogy", "learning"]),
     retrieval_mode: "balanced"
   });
 
@@ -437,9 +445,9 @@ async function brief(runtime: Runtime, args: Args): Promise<JsonValue> {
   const baseQuery = `${topic} ${task}`;
 
   const [aha, confusions, failures] = await Promise.all([
-    search(runtime, baseQuery, limit, ["concept"], ["ahagraph", "pathfinder", "aha", "analogy", topic]),
-    search(runtime, `${baseQuery} confusion weak spot misunderstanding misconception`, limit, ["note", "concept"], ["ahagraph", "pathfinder", "confusion", "weak-spot", topic]),
-    search(runtime, `${baseQuery} bug failure mistake regression guardrail previous`, limit, ["fact", "pattern", "decision", "note"], ["ahagraph", "pathfinder", "failure", "bug", "guardrail", topic])
+    search(runtime, baseQuery, limit, ["concept"], compact([...AHAGRAPH_CONTEXT, "aha", "analogy", topic])),
+    search(runtime, `${baseQuery} confusion weak spot misunderstanding misconception`, limit, ["note", "concept"], compact([...AHAGRAPH_CONTEXT, "confusion", "weak-spot", topic])),
+    search(runtime, `${baseQuery} bug failure mistake regression guardrail previous`, limit, ["fact", "pattern", "decision", "note"], compact([...AHAGRAPH_CONTEXT, "failure", "bug", "guardrail", topic]))
   ]);
 
   return {
@@ -473,20 +481,20 @@ async function profile(runtime: Runtime, args: Args): Promise<JsonValue> {
   const scope = topic ?? "developer learning";
 
   const [aha, confusions, failures, health] = await Promise.all([
-    search(runtime, `${scope} aha analogy what clicked`, limit, ["concept"], compact(["ahagraph", "pathfinder", "aha", topic])),
+    search(runtime, `${scope} aha analogy what clicked`, limit, ["concept"], compact([...AHAGRAPH_CONTEXT, "aha", topic])),
     search(
       runtime,
       `${scope} confusion weak spot misunderstanding misconception`,
       limit,
       ["note", "concept"],
-      compact(["ahagraph", "pathfinder", "confusion", "weak-spot", topic])
+      compact([...AHAGRAPH_CONTEXT, "confusion", "weak-spot", topic])
     ),
     search(
       runtime,
       `${scope} failure bug mistake guardrail repeated`,
       limit,
       ["pattern", "note", "decision", "fact"],
-      compact(["ahagraph", "pathfinder", "failure", "guardrail", topic])
+      compact([...AHAGRAPH_CONTEXT, "failure", "guardrail", topic])
     ),
     runtime.vestige.callTool("memory_health", {})
   ]);
@@ -573,9 +581,10 @@ async function transfer(runtime: Runtime, args: Args): Promise<JsonValue> {
   const toConcept = requireString(args, "to_concept", MAX_SHORT_TEXT);
   const limit = boundedLimit(args, 3, 5);
 
-  const [fromMemories, toMemories] = await Promise.all([
-    search(runtime, fromConcept, limit, ["concept", "note", "pattern"], ["ahagraph", "pathfinder", "aha", fromConcept]),
-    search(runtime, toConcept, limit, ["concept", "note", "pattern"], ["ahagraph", "pathfinder", "learning", toConcept])
+  const [fromMemories, toMemories, unlockedMemories] = await Promise.all([
+    search(runtime, fromConcept, limit, ["concept", "note", "pattern"], compact([...AHAGRAPH_CONTEXT, "aha", fromConcept])),
+    search(runtime, toConcept, limit, ["concept", "note", "pattern"], compact([...AHAGRAPH_CONTEXT, "learning", toConcept])),
+    search(runtime, fromConcept, limit, ["concept"], compact([...AHAGRAPH_CONTEXT, "aha", `unlocks:${tagValue(toConcept)}`]))
   ]);
 
   const fromId = extractFirstMemoryId(fromMemories);
@@ -601,6 +610,7 @@ async function transfer(runtime: Runtime, args: Args): Promise<JsonValue> {
     evidence: {
       fromMemories,
       toMemories,
+      unlockedMemories,
       associations,
       bridges
     }
@@ -617,7 +627,7 @@ async function confusionHistory(runtime: Runtime, args: Args): Promise<JsonValue
       `${topic} confusion weak spot misunderstanding misconception keeps getting wrong`,
       limit,
       ["note", "concept"],
-      ["ahagraph", "pathfinder", "confusion", "weak-spot", topic],
+      compact([...AHAGRAPH_CONTEXT, "confusion", "weak-spot", topic]),
       "full"
     ),
     runtime.vestige.callTool("memory_timeline", {
@@ -651,11 +661,11 @@ async function dueForReview(runtime: Runtime, args: Args): Promise<JsonValue> {
 
   const [candidates, health] = await Promise.all([
     runtime.vestige.callTool("search", {
-      query,
+      query: safeSearchQuery(query),
       limit,
       detail_level: "full",
       include_types: ["concept", "note", "pattern"],
-      context_topics: compact(["ahagraph", "pathfinder", "aha", "confusion", topic]),
+      context_topics: safeContextTopics(compact([...AHAGRAPH_CONTEXT, "aha", "confusion", topic])),
       retrieval_mode: "balanced",
       token_budget: 4_000
     }),
@@ -683,7 +693,7 @@ async function graph(runtime: Runtime, args: Args): Promise<JsonValue> {
   const maxNodes = Math.max(1, Math.min(200, Math.floor(optionalNumber(args, "max_nodes") ?? 50)));
 
   const vestige = await runtime.vestige.callTool("memory_graph", {
-    ...(centerId ? { center_id: centerId } : { query: query ?? "ahagraph aha confusion failure learning" }),
+    ...(centerId ? { center_id: centerId } : { query: safeSearchQuery(query ?? "ahagraph aha confusion failure learning") }),
     depth,
     max_nodes: maxNodes
   });
@@ -692,7 +702,7 @@ async function graph(runtime: Runtime, args: Args): Promise<JsonValue> {
     ok: true,
     ahagraphTool: "graph",
     delegatedTo: "vestige.memory_graph",
-    dashboardUrl: "http://localhost:3937/dashboard",
+    dashboardUrl: dashboardUrl(),
     visualLegend: {
       aha: { color: "gold", meaning: "What made a concept click." },
       confusion: { color: "red", meaning: "A weak spot or misconception." },
@@ -714,7 +724,7 @@ async function shareAhaCard(runtime: Runtime, args: Args): Promise<JsonValue> {
     `${concept} aha analogy what clicked`,
     3,
     ["concept"],
-    ["ahagraph", "pathfinder", "aha", concept],
+    compact([...AHAGRAPH_CONTEXT, "aha", concept]),
     "full"
   );
   const snippets = extractMemorySnippets(evidence, 3);
@@ -725,11 +735,11 @@ async function shareAhaCard(runtime: Runtime, args: Args): Promise<JsonValue> {
   const hook = angle ?? `The explanation that finally made ${concept} click.`;
   const title = `The ${concept} aha`;
   const markdown = [
-    `## ${title}`,
+    `## ${escapeMarkdown(title)}`,
     "",
-    hook,
+    escapeMarkdown(hook),
     "",
-    `**What clicked:** ${ahaLine}`,
+    `**What clicked:** ${escapeMarkdown(ahaLine)}`,
     "",
     `**Why it matters:** AhaGraph remembers the explanation that worked, then Vestige makes it reusable across future coding sessions.`,
     "",
@@ -813,20 +823,20 @@ async function teachDifferently(runtime: Runtime, args: Args): Promise<JsonValue
       : Promise.resolve(null);
 
   const [aha, confusions, failures, attemptMemory] = await Promise.all([
-    search(runtime, `${topic} aha analogy what clicked`, limit, ["concept"], ["ahagraph", "pathfinder", "aha", topic]),
+    search(runtime, `${topic} aha analogy what clicked`, limit, ["concept"], compact([...AHAGRAPH_CONTEXT, "aha", topic])),
     search(
       runtime,
       `${topic} confusion weak spot misunderstanding misconception`,
       limit,
       ["note", "concept"],
-      ["ahagraph", "pathfinder", "confusion", "weak-spot", topic]
+      compact([...AHAGRAPH_CONTEXT, "confusion", "weak-spot", topic])
     ),
     search(
       runtime,
       `${topic} failure bug mistake guardrail`,
       limit,
       ["pattern", "note", "decision", "fact"],
-      ["ahagraph", "pathfinder", "failure", "guardrail", topic]
+      compact([...AHAGRAPH_CONTEXT, "failure", "guardrail", topic])
     ),
     attemptMemoryPromise
   ]);
@@ -864,20 +874,20 @@ async function learningVelocity(runtime: Runtime, args: Args): Promise<JsonValue
   const scope = topic ?? "developer learning";
 
   const [aha, confusions, failures, review, timeline, health] = await Promise.all([
-    search(runtime, `${scope} aha analogy what clicked`, limit, ["concept"], compact(["ahagraph", "pathfinder", "aha", topic])),
+    search(runtime, `${scope} aha analogy what clicked`, limit, ["concept"], compact([...AHAGRAPH_CONTEXT, "aha", topic])),
     search(
       runtime,
       `${scope} confusion weak spot misunderstanding misconception`,
       limit,
       ["note", "concept"],
-      compact(["ahagraph", "pathfinder", "confusion", "weak-spot", topic])
+      compact([...AHAGRAPH_CONTEXT, "confusion", "weak-spot", topic])
     ),
     search(
       runtime,
       `${scope} failure bug mistake guardrail repeated`,
       limit,
       ["pattern", "note", "decision", "fact"],
-      compact(["ahagraph", "pathfinder", "failure", "guardrail", topic])
+      compact([...AHAGRAPH_CONTEXT, "failure", "guardrail", topic])
     ),
     dueForReview(runtime, topic ? { topic, limit: Math.min(10, limit) } : { limit: Math.min(10, limit) }),
     runtime.vestige.callTool("memory_timeline", {
@@ -946,7 +956,7 @@ async function status(runtime: Runtime): Promise<JsonValue> {
     ok: true,
     ahagraph: {
       name: "ahagraph",
-      version: "0.1.0",
+      version: AHAGRAPH_VERSION,
       tools: tools.map((tool) => tool.name)
     },
     vestige
@@ -962,14 +972,37 @@ function search(
   detailLevel: "brief" | "summary" | "full" = "summary"
 ): Promise<JsonValue> {
   return runtime.vestige.callTool("search", {
-    query,
+    query: safeSearchQuery(query),
     limit,
     detail_level: detailLevel,
     include_types: includeTypes,
-    context_topics: contextTopics,
+    context_topics: safeContextTopics(contextTopics),
     retrieval_mode: "balanced",
     token_budget: 2_500
   });
+}
+
+function safeSearchQuery(value: string): string {
+  const cleaned = value
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/[<>{}\[\]()"`'$\\|;&]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_MEDIUM_TEXT);
+  return cleaned || "ahagraph learning";
+}
+
+function safeContextTopics(values: string[]): string[] {
+  return values
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map((value) => value.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, MAX_SHORT_TEXT));
+}
+
+function dashboardUrl(): string {
+  const rawPort = process.env.VESTIGE_DASHBOARD_PORT ?? "3937";
+  const port = /^\d{1,5}$/.test(rawPort) ? rawPort : "3937";
+  return `http://localhost:${port}/dashboard?colorMode=ahagraph`;
 }
 
 function extractFirstMemoryId(value: JsonValue): string | undefined {
@@ -994,17 +1027,17 @@ function annotateGraph(value: JsonValue): JsonValue {
       return {
         ...node,
         ahagraphKind: kind,
-        ahagraphColor: kind === "aha" ? "gold" : kind === "confusion" ? "red" : kind === "failure" ? "gray" : "blue"
+        ahagraphColor: AHAGRAPH_NODE_COLORS[kind]
       };
     })
   };
 }
 
-function classifyNode(node: JsonObject): string {
-  const haystack = JSON.stringify(node).toLowerCase();
-  if (haystack.includes("confusion") || haystack.includes("weak-spot")) return "confusion";
-  if (haystack.includes("failure") || haystack.includes("guardrail") || haystack.includes("mistake")) return "failure";
-  if (haystack.includes("aha") || haystack.includes("what clicked") || haystack.includes("analogy")) return "aha";
+function classifyNode(node: JsonObject): keyof typeof AHAGRAPH_NODE_COLORS {
+  const tags = stringArray(node.tags).map((tag) => tag.toLowerCase());
+  if (tags.includes("aha")) return "aha";
+  if (tags.includes("confusion") || tags.includes("weak-spot")) return "confusion";
+  if (tags.includes("failure") || tags.includes("guardrail")) return "failure";
   return "learning";
 }
 
@@ -1187,6 +1220,10 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#039;");
 }
 
+function escapeMarkdown(value: string): string {
+  return value.replace(/([\\`*_{}\[\]()#+.!|<>-])/g, "\\$1");
+}
+
 function requireString(args: Args, field: string, maxLength: number): string {
   const value = args[field];
   if (typeof value !== "string" || value.trim().length === 0) {
@@ -1244,6 +1281,11 @@ function validateLength(field: string, value: string, maxLength: number): string
 
 function compact(values: Array<string | undefined>): string[] {
   return values.filter((value): value is string => Boolean(value));
+}
+
+function stringArray(value: JsonValue | undefined): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string");
 }
 
 function tagValue(value: string): string {
