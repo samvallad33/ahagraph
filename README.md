@@ -34,6 +34,21 @@ Prerequisites:
 - Node.js 20+
 - `vestige-mcp` installed and available on `PATH`
 
+From npm:
+
+```bash
+npm install -g ahagraph
+ahagraph
+```
+
+Or run without installing:
+
+```bash
+npx -y ahagraph
+```
+
+From source:
+
 ```bash
 git clone https://github.com/samvallad33/ahagraph.git
 cd ahagraph
@@ -56,6 +71,12 @@ VESTIGE_MCP_ARGS="--data-dir /tmp/ahagraph-demo" npm start
 ## Claude Code
 
 ```bash
+claude mcp add ahagraph -- npx -y ahagraph
+```
+
+For a local checkout:
+
+```bash
 claude mcp add ahagraph -- node /absolute/path/to/ahagraph/dist/src/index.js
 ```
 
@@ -65,8 +86,8 @@ claude mcp add ahagraph -- node /absolute/path/to/ahagraph/dist/src/index.js
 {
   "mcpServers": {
     "ahagraph": {
-      "command": "node",
-      "args": ["/absolute/path/to/ahagraph/dist/src/index.js"],
+      "command": "npx",
+      "args": ["-y", "ahagraph"],
       "env": {
         "VESTIGE_MCP_COMMAND": "vestige-mcp"
       }
@@ -137,6 +158,28 @@ Brief the assistant before it helps.
 }
 ```
 
+### `profile`
+
+Build the developer's learning profile from aha moments, confusions, and guardrails.
+
+```json
+{
+  "topic": "React effects"
+}
+```
+
+### `synthesis`
+
+Produce a teaching-ready plan: what clicked, what to avoid, what to test, and how to explain next.
+
+```json
+{
+  "topic": "Zig comptime",
+  "task": "explain it using concepts that already clicked",
+  "depth": "normal"
+}
+```
+
 ### `transfer`
 
 Find analogical bridges between concepts.
@@ -180,6 +223,41 @@ Export AhaGraph visualization data from Vestige's memory graph.
 }
 ```
 
+### `share_aha_card`
+
+Draft a public-safe aha card for social posts, docs, or a demo overlay.
+
+```json
+{
+  "concept": "Rust ownership",
+  "public_aha": "Ownership clicked when I stopped thinking about variables and started thinking about who currently has the book.",
+  "audience": "developers"
+}
+```
+
+### `teach_differently`
+
+Live mode for changing the explanation when the first attempt does not land.
+
+```json
+{
+  "topic": "React effects",
+  "learner_signal": "too_abstract",
+  "goal": "fix stale interval callbacks"
+}
+```
+
+### `learning_velocity`
+
+Estimate momentum from aha, confusion, failure, review, and timeline signals.
+
+```json
+{
+  "topic": "Rust ownership",
+  "window_days": 30
+}
+```
+
 ### `status`
 
 Verify that AhaGraph can reach Vestige.
@@ -198,7 +276,18 @@ Day 2:
 
 > Use AhaGraph to brief yourself before helping me with Zig comptime.
 
-The assistant should use `brief`, `transfer`, `confusion_history`, `due_for_review`, and `graph`.
+The assistant should use `brief`, `profile`, `synthesis`, `transfer`, `confusion_history`, `due_for_review`, and `graph`.
+
+Public demo hooks:
+
+- Visual learning graph: `graph`
+- Cross-domain transfer: `transfer`
+- Proactive aha replay: `due_for_review`
+- Confusion archaeology: `confusion_history`
+- Public shareable aha cards: `share_aha_card`
+- Live teach differently mode: `teach_differently`
+- Learning velocity metrics: `learning_velocity`
+- Pedagogical synthesis output: `synthesis`
 
 ## Verify
 

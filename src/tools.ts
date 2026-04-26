@@ -100,6 +100,33 @@ export const tools: ToolDefinition[] = [
     }
   },
   {
+    name: "profile",
+    description:
+      "Build a learner profile from remembered aha moments, confusions, and failure guardrails.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        topic: { type: "string", maxLength: MAX_SHORT_TEXT, description: "Optional topic to focus the learner profile." },
+        limit: { type: "integer", minimum: 1, maximum: 10, default: 5 }
+      }
+    }
+  },
+  {
+    name: "synthesis",
+    description:
+      "Produce a teaching-ready synthesis: what clicked, what to avoid, what to test, and how to explain this next.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        topic: { type: "string", maxLength: MAX_SHORT_TEXT, description: "Current concept, library, language, or repo area." },
+        task: { type: "string", maxLength: MAX_MEDIUM_TEXT, description: "What the developer is trying to do." },
+        depth: { type: "string", enum: ["quick", "normal", "deep"], default: "normal" },
+        limit: { type: "integer", minimum: 1, maximum: 5, default: 3 }
+      },
+      required: ["topic", "task"]
+    }
+  },
+  {
     name: "transfer",
     description:
       "Find analogical bridges from one concept/domain to another using Vestige search plus graph associations.",
@@ -153,6 +180,56 @@ export const tools: ToolDefinition[] = [
     }
   },
   {
+    name: "share_aha_card",
+    description:
+      "Draft a public-safe share card for an aha moment, ready for LinkedIn, X, docs, or a demo overlay.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        concept: { type: "string", maxLength: MAX_SHORT_TEXT, description: "The concept the card should make memorable." },
+        public_aha: { type: "string", maxLength: MAX_MEDIUM_TEXT, description: "Optional public-safe restatement to use instead of private memory text." },
+        angle: { type: "string", maxLength: MAX_SHORT_TEXT, description: "Optional hook or audience angle." },
+        audience: { type: "string", enum: ["developers", "beginners", "teams", "public"], default: "developers" },
+        format: { type: "string", enum: ["markdown", "html", "json"], default: "markdown" }
+      },
+      required: ["concept"]
+    }
+  },
+  {
+    name: "teach_differently",
+    description:
+      "Live mode for changing the teaching strategy when an explanation is not landing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        topic: { type: "string", maxLength: MAX_SHORT_TEXT, description: "Concept being taught right now." },
+        goal: { type: "string", maxLength: MAX_MEDIUM_TEXT, description: "What the developer needs to do with the concept." },
+        current_explanation: { type: "string", maxLength: MAX_LONG_TEXT, description: "Explanation that just failed, partially worked, or clicked." },
+        learner_signal: {
+          type: "string",
+          enum: ["still_confused", "too_abstract", "too_fast", "needs_example", "bored", "clicked", "wrong_level"],
+          default: "still_confused"
+        },
+        remember_attempt: { type: "boolean", default: true },
+        limit: { type: "integer", minimum: 1, maximum: 5, default: 3 }
+      },
+      required: ["topic"]
+    }
+  },
+  {
+    name: "learning_velocity",
+    description:
+      "Estimate learning velocity from aha, confusion, failure, review, and timeline signals in Vestige.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        topic: { type: "string", maxLength: MAX_SHORT_TEXT, description: "Optional topic to measure." },
+        window_days: { type: "integer", minimum: 1, maximum: 365, default: 30 },
+        limit: { type: "integer", minimum: 1, maximum: 50, default: 20 }
+      }
+    }
+  },
+  {
     name: "status",
     description: "Check whether AhaGraph can reach Vestige and list the backing memory tools.",
     inputSchema: {
@@ -179,6 +256,10 @@ export async function callAhaGraphTool(
         return jsonTextResult(await captureFailure(runtime, rawArgs));
       case "brief":
         return jsonTextResult(await brief(runtime, rawArgs));
+      case "profile":
+        return jsonTextResult(await profile(runtime, rawArgs));
+      case "synthesis":
+        return jsonTextResult(await synthesis(runtime, rawArgs));
       case "transfer":
         return jsonTextResult(await transfer(runtime, rawArgs));
       case "confusion_history":
@@ -187,6 +268,12 @@ export async function callAhaGraphTool(
         return jsonTextResult(await dueForReview(runtime, rawArgs));
       case "graph":
         return jsonTextResult(await graph(runtime, rawArgs));
+      case "share_aha_card":
+        return jsonTextResult(await shareAhaCard(runtime, rawArgs));
+      case "teach_differently":
+        return jsonTextResult(await teachDifferently(runtime, rawArgs));
+      case "learning_velocity":
+        return jsonTextResult(await learningVelocity(runtime, rawArgs));
       case "status":
         return jsonTextResult(await status(runtime));
       default:
@@ -380,6 +467,107 @@ async function brief(runtime: Runtime, args: Args): Promise<JsonValue> {
   };
 }
 
+async function profile(runtime: Runtime, args: Args): Promise<JsonValue> {
+  const topic = optionalString(args, "topic", MAX_SHORT_TEXT);
+  const limit = boundedLimit(args, 5, 10);
+  const scope = topic ?? "developer learning";
+
+  const [aha, confusions, failures, health] = await Promise.all([
+    search(runtime, `${scope} aha analogy what clicked`, limit, ["concept"], compact(["ahagraph", "pathfinder", "aha", topic])),
+    search(
+      runtime,
+      `${scope} confusion weak spot misunderstanding misconception`,
+      limit,
+      ["note", "concept"],
+      compact(["ahagraph", "pathfinder", "confusion", "weak-spot", topic])
+    ),
+    search(
+      runtime,
+      `${scope} failure bug mistake guardrail repeated`,
+      limit,
+      ["pattern", "note", "decision", "fact"],
+      compact(["ahagraph", "pathfinder", "failure", "guardrail", topic])
+    ),
+    runtime.vestige.callTool("memory_health", {})
+  ]);
+
+  return {
+    ok: true,
+    ahagraphTool: "profile",
+    delegatedTo: ["vestige.search", "vestige.memory_health"],
+    topic: topic ?? null,
+    learnerProfile: {
+      headline: topic
+        ? `How this developer learns ${topic}.`
+        : "How this developer learns technical concepts.",
+      teachingPreferences: [
+        "Start from remembered aha moments before using a generic definition.",
+        "Prefer concrete analogies and worked examples when prior memories show they helped.",
+        "Use confusions as first-class requirements for the explanation, not as afterthoughts."
+      ],
+      riskModel: [
+        "Repeated confusions indicate the explanation should change shape, not just repeat louder.",
+        "Failure memories become pre-flight checks before code or architecture advice.",
+        "Memory health and review signals should decide what to refresh before teaching something adjacent."
+      ],
+      assistantRules: [
+        "Say which remembered aha you are using.",
+        "Name the likely misconception before giving the fix.",
+        "End with a teach-back question that tests the exact weak spot."
+      ]
+    },
+    vestige: {
+      aha,
+      confusions,
+      failures,
+      health
+    }
+  };
+}
+
+async function synthesis(runtime: Runtime, args: Args): Promise<JsonValue> {
+  const topic = requireString(args, "topic", MAX_SHORT_TEXT);
+  const task = requireString(args, "task", MAX_MEDIUM_TEXT);
+  const depth = optionalEnum(args, "depth", ["quick", "normal", "deep"]) ?? "normal";
+  const limit = boundedLimit(args, 3, 5);
+
+  const [briefing, learnerProfile, review] = await Promise.all([
+    brief(runtime, { topic, task, limit }),
+    profile(runtime, { topic, limit }),
+    dueForReview(runtime, { topic, limit })
+  ]);
+
+  return {
+    ok: true,
+    ahagraphTool: "synthesis",
+    delegatedTo: ["ahagraph.brief", "ahagraph.profile", "ahagraph.due_for_review"],
+    topic,
+    task,
+    depth,
+    synthesis: {
+      purpose:
+        "Turn Vestige memory into a teaching plan that adapts to this developer instead of explaining from scratch.",
+      beforeExplaining: [
+        "Recall what has already clicked.",
+        "Check recurring confusion and stale review candidates.",
+        "Pick the smallest example that tests the weak spot."
+      ],
+      teachingPlan: synthesisSteps(depth),
+      outputContract: {
+        startWith: "A remembered mental model or analogy.",
+        avoid: "Repeating an explanation that already failed.",
+        proveItWorked: "Ask for a one-sentence teach-back or tiny implementation.",
+        storeAfter: "Capture the new aha, confusion, or failure pattern."
+      }
+    },
+    evidence: {
+      briefing,
+      learnerProfile,
+      review
+    }
+  };
+}
+
 async function transfer(runtime: Runtime, args: Args): Promise<JsonValue> {
   const fromConcept = requireString(args, "from_concept", MAX_SHORT_TEXT);
   const toConcept = requireString(args, "to_concept", MAX_SHORT_TEXT);
@@ -514,6 +702,244 @@ async function graph(runtime: Runtime, args: Args): Promise<JsonValue> {
   };
 }
 
+async function shareAhaCard(runtime: Runtime, args: Args): Promise<JsonValue> {
+  const concept = requireString(args, "concept", MAX_SHORT_TEXT);
+  const publicAha = optionalString(args, "public_aha", MAX_MEDIUM_TEXT);
+  const angle = optionalString(args, "angle", MAX_SHORT_TEXT);
+  const audience = optionalEnum(args, "audience", ["developers", "beginners", "teams", "public"]) ?? "developers";
+  const format = optionalEnum(args, "format", ["markdown", "html", "json"]) ?? "markdown";
+
+  const evidence = await search(
+    runtime,
+    `${concept} aha analogy what clicked`,
+    3,
+    ["concept"],
+    ["ahagraph", "pathfinder", "aha", concept],
+    "full"
+  );
+  const snippets = extractMemorySnippets(evidence, 3);
+  const ahaLine =
+    publicAha ??
+    snippets[0] ??
+    `The breakthrough was connecting ${concept} to a concrete mental model the developer already understood.`;
+  const hook = angle ?? `The explanation that finally made ${concept} click.`;
+  const title = `The ${concept} aha`;
+  const markdown = [
+    `## ${title}`,
+    "",
+    hook,
+    "",
+    `**What clicked:** ${ahaLine}`,
+    "",
+    `**Why it matters:** AhaGraph remembers the explanation that worked, then Vestige makes it reusable across future coding sessions.`,
+    "",
+    "Powered by AhaGraph + Vestige."
+  ].join("\n");
+  const html = [
+    `<article class="ahagraph-card" data-audience="${escapeHtml(audience)}">`,
+    `  <p class="eyebrow">AhaGraph</p>`,
+    `  <h1>${escapeHtml(title)}</h1>`,
+    `  <p class="hook">${escapeHtml(hook)}</p>`,
+    `  <p><strong>What clicked:</strong> ${escapeHtml(ahaLine)}</p>`,
+    "  <p><strong>Why it matters:</strong> AhaGraph remembers the explanation that worked; Vestige makes it reusable.</p>",
+    "  <footer>Powered by AhaGraph + Vestige</footer>",
+    "</article>"
+  ].join("\n");
+
+  return {
+    ok: true,
+    ahagraphTool: "share_aha_card",
+    delegatedTo: "vestige.search",
+    concept,
+    audience,
+    preferredFormat: format,
+    reviewRequired: publicAha === undefined,
+    card: {
+      title,
+      hook,
+      whatClicked: ahaLine,
+      markdown,
+      html,
+      json: {
+        product: "AhaGraph",
+        concept,
+        hook,
+        whatClicked: ahaLine,
+        poweredBy: "Vestige"
+      }
+    },
+    privacy:
+      "Review before posting. If public_aha was omitted, the draft may be based on private memory evidence.",
+    evidenceSnippets: snippets
+  };
+}
+
+async function teachDifferently(runtime: Runtime, args: Args): Promise<JsonValue> {
+  const topic = requireString(args, "topic", MAX_SHORT_TEXT);
+  const goal = optionalString(args, "goal", MAX_MEDIUM_TEXT);
+  const currentExplanation = optionalString(args, "current_explanation", MAX_LONG_TEXT);
+  const learnerSignal =
+    optionalEnum(args, "learner_signal", [
+      "still_confused",
+      "too_abstract",
+      "too_fast",
+      "needs_example",
+      "bored",
+      "clicked",
+      "wrong_level"
+    ]) ?? "still_confused";
+  const rememberAttempt = optionalBoolean(args, "remember_attempt") ?? Boolean(currentExplanation);
+  const limit = boundedLimit(args, 3, 5);
+
+  const attemptMemoryPromise =
+    rememberAttempt && currentExplanation
+      ? runtime.vestige.callTool("smart_ingest", {
+          content: compact([
+            "AhaGraph live teaching attempt",
+            `Topic: ${topic}`,
+            goal ? `Goal: ${goal}` : undefined,
+            `Learner signal: ${learnerSignal}`,
+            `Explanation tried: ${currentExplanation}`
+          ]).join("\n"),
+          node_type: learnerSignal === "clicked" ? "concept" : "note",
+          tags: compact([
+            "ahagraph",
+            "teach-differently",
+            learnerSignal === "clicked" ? "aha" : "confusion",
+            `topic:${tagValue(topic)}`,
+            `signal:${learnerSignal}`
+          ])
+        })
+      : Promise.resolve(null);
+
+  const [aha, confusions, failures, attemptMemory] = await Promise.all([
+    search(runtime, `${topic} aha analogy what clicked`, limit, ["concept"], ["ahagraph", "pathfinder", "aha", topic]),
+    search(
+      runtime,
+      `${topic} confusion weak spot misunderstanding misconception`,
+      limit,
+      ["note", "concept"],
+      ["ahagraph", "pathfinder", "confusion", "weak-spot", topic]
+    ),
+    search(
+      runtime,
+      `${topic} failure bug mistake guardrail`,
+      limit,
+      ["pattern", "note", "decision", "fact"],
+      ["ahagraph", "pathfinder", "failure", "guardrail", topic]
+    ),
+    attemptMemoryPromise
+  ]);
+
+  return {
+    ok: true,
+    ahagraphTool: "teach_differently",
+    delegatedTo: ["vestige.search", "vestige.smart_ingest"],
+    topic,
+    goal: goal ?? null,
+    learnerSignal,
+    liveMode: {
+      directive: "Do not explain the same way twice. Change the teaching move based on the learner signal.",
+      nextMove: teachingMoveForSignal(learnerSignal),
+      sequence: [
+        "Anchor on one remembered aha or analogy if available.",
+        "Name the specific confusion the new explanation is designed to avoid.",
+        "Use a tiny concrete example before abstract language.",
+        "Ask one teach-back question and store the result as aha, confusion, or failure."
+      ]
+    },
+    evidence: {
+      aha,
+      confusions,
+      failures,
+      attemptMemory: attemptMemory ?? null
+    }
+  };
+}
+
+async function learningVelocity(runtime: Runtime, args: Args): Promise<JsonValue> {
+  const topic = optionalString(args, "topic", MAX_SHORT_TEXT);
+  const windowDays = Math.max(1, Math.min(365, Math.floor(optionalNumber(args, "window_days") ?? 30)));
+  const limit = Math.max(1, Math.min(50, Math.floor(optionalNumber(args, "limit") ?? 20)));
+  const scope = topic ?? "developer learning";
+
+  const [aha, confusions, failures, review, timeline, health] = await Promise.all([
+    search(runtime, `${scope} aha analogy what clicked`, limit, ["concept"], compact(["ahagraph", "pathfinder", "aha", topic])),
+    search(
+      runtime,
+      `${scope} confusion weak spot misunderstanding misconception`,
+      limit,
+      ["note", "concept"],
+      compact(["ahagraph", "pathfinder", "confusion", "weak-spot", topic])
+    ),
+    search(
+      runtime,
+      `${scope} failure bug mistake guardrail repeated`,
+      limit,
+      ["pattern", "note", "decision", "fact"],
+      compact(["ahagraph", "pathfinder", "failure", "guardrail", topic])
+    ),
+    dueForReview(runtime, topic ? { topic, limit: Math.min(10, limit) } : { limit: Math.min(10, limit) }),
+    runtime.vestige.callTool("memory_timeline", {
+      tags: ["ahagraph"],
+      limit,
+      detail_level: "summary"
+    }),
+    runtime.vestige.callTool("memory_health", {})
+  ]);
+
+  const counts = {
+    aha: countResults(aha),
+    confusions: countResults(confusions),
+    failures: countResults(failures),
+    timelineEvents: countResults(timeline),
+    reviewCandidates: countResultsFromPath(review, ["vestige", "candidates"])
+  };
+  const totalLearningSignals = counts.aha + counts.confusions + counts.failures;
+  const velocityScore = totalLearningSignals === 0
+    ? 0
+    : clampScore(Math.round(((counts.aha * 2 - counts.confusions - counts.failures) / totalLearningSignals) * 50 + 50));
+  const momentum =
+    velocityScore >= 75 ? "accelerating" : velocityScore >= 45 ? "active but uneven" : velocityScore > 0 ? "blocked" : "insufficient data";
+
+  return {
+    ok: true,
+    ahagraphTool: "learning_velocity",
+    delegatedTo: ["vestige.search", "vestige.memory_timeline", "vestige.memory_health", "ahagraph.due_for_review"],
+    topic: topic ?? null,
+    windowDays,
+    metrics: {
+      scope,
+      sampledSignals: counts,
+      velocityScore,
+      momentum,
+      ahaToConfusionRatio: ratio(counts.aha, counts.confusions),
+      failurePressure: ratio(counts.failures, Math.max(1, totalLearningSignals)),
+      interpretation:
+        "This is a demo-ready estimate from retrieved AhaGraph memories, not a complete analytics warehouse count."
+    },
+    recommendations: [
+      counts.confusions > counts.aha
+        ? "Turn the most repeated confusion into a live teach_differently session."
+        : "Convert the strongest aha into a share_aha_card while it is fresh.",
+      counts.reviewCandidates > 0
+        ? "Run due_for_review before teaching adjacent concepts."
+        : "Capture more aha/confusion events to build a stronger retention curve.",
+      counts.failures > 0
+        ? "Promote repeated failures into guardrails inside brief and synthesis."
+        : "Keep capturing failure patterns; they are high-leverage teaching constraints."
+    ],
+    evidence: {
+      aha,
+      confusions,
+      failures,
+      review,
+      timeline,
+      health
+    }
+  };
+}
+
 async function status(runtime: Runtime): Promise<JsonValue> {
   const vestige = await runtime.vestige.listTools();
   return {
@@ -582,6 +1008,185 @@ function classifyNode(node: JsonObject): string {
   return "learning";
 }
 
+function synthesisSteps(depth: "quick" | "normal" | "deep"): string[] {
+  if (depth === "quick") {
+    return [
+      "Use the strongest remembered analogy.",
+      "Point at one likely confusion.",
+      "Ask one check question."
+    ];
+  }
+  if (depth === "deep") {
+    return [
+      "Start with the developer's prior aha and explain why it transfers.",
+      "Map the new concept onto that model, then name exactly where the analogy breaks.",
+      "Surface recurring confusions and repeated failure patterns before code.",
+      "Give a minimal worked example, then a contrasting non-example.",
+      "End with a teach-back and store the result as the next graph node."
+    ];
+  }
+  return [
+    "Start from a remembered aha or analogy.",
+    "Address the most likely confusion directly.",
+    "Give one concrete example and one small test.",
+    "Capture what clicked or what stayed confusing."
+  ];
+}
+
+function teachingMoveForSignal(signal: string): JsonObject {
+  switch (signal) {
+    case "too_abstract":
+      return {
+        move: "Drop the definition and use a tiny concrete example first.",
+        avoid: "More terminology.",
+        check: "Ask the developer to predict the next line of code."
+      };
+    case "too_fast":
+      return {
+        move: "Break the explanation into one concept per step.",
+        avoid: "Combining syntax, runtime behavior, and mental model in one pass.",
+        check: "Ask which exact step stopped making sense."
+      };
+    case "needs_example":
+      return {
+        move: "Use a worked example and a near-miss counterexample.",
+        avoid: "Explaining only with principles.",
+        check: "Ask the developer to modify the example."
+      };
+    case "bored":
+      return {
+        move: "Tie the concept to a real bug, performance win, or tool they are building.",
+        avoid: "Intro-level material they already know.",
+        check: "Ask what they would ship differently with this model."
+      };
+    case "clicked":
+      return {
+        move: "Capture the aha and immediately test transfer to a nearby concept.",
+        avoid: "Moving on without storing the breakthrough.",
+        check: "Ask for the one-sentence mental model."
+      };
+    case "wrong_level":
+      return {
+        move: "Ask one calibration question, then choose beginner, working, or expert depth.",
+        avoid: "Guessing the developer's level from the topic name.",
+        check: "Ask them to rate the explanation as too basic, right, or too advanced."
+      };
+    default:
+      return {
+        move: "Change the explanation shape: analogy first, code second, definition last.",
+        avoid: "Repeating the same wording.",
+        check: "Ask for a teach-back in the developer's own words."
+      };
+  }
+}
+
+function extractMemorySnippets(value: JsonValue, max: number): string[] {
+  const snippets: string[] = [];
+  const seen = new Set<string>();
+
+  for (const item of searchResultItems(value)) {
+    const snippet = snippetFromValue(item);
+    if (snippet && !seen.has(snippet)) {
+      seen.add(snippet);
+      snippets.push(snippet);
+      if (snippets.length >= max) return snippets;
+    }
+  }
+
+  collectSnippets(value, snippets, seen, max);
+  return snippets.slice(0, max);
+}
+
+function searchResultItems(value: JsonValue): JsonValue[] {
+  if (!isObject(value)) return [];
+  for (const key of ["results", "matches", "items", "memories"]) {
+    const items = value[key];
+    if (Array.isArray(items)) return items;
+  }
+  return [];
+}
+
+function snippetFromValue(value: JsonValue): string | undefined {
+  if (typeof value === "string") return cleanSnippet(value);
+  if (!isObject(value)) return undefined;
+
+  for (const key of ["content", "summary", "text", "memory", "description", "title"]) {
+    const item = value[key];
+    if (typeof item === "string") return cleanSnippet(item);
+  }
+
+  return undefined;
+}
+
+function collectSnippets(value: JsonValue, out: string[], seen: Set<string>, max: number): void {
+  if (out.length >= max) return;
+  if (typeof value === "string") {
+    const snippet = cleanSnippet(value);
+    if (snippet && !seen.has(snippet)) {
+      seen.add(snippet);
+      out.push(snippet);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectSnippets(item, out, seen, max);
+      if (out.length >= max) return;
+    }
+    return;
+  }
+  if (!isObject(value)) return;
+  for (const key of ["content", "summary", "text", "memory", "description", "title", "results", "matches"]) {
+    if (key in value) {
+      collectSnippets(value[key], out, seen, max);
+      if (out.length >= max) return;
+    }
+  }
+}
+
+function cleanSnippet(value: string): string | undefined {
+  const cleaned = value.replace(/\s+/g, " ").trim();
+  if (cleaned.length < 20) return undefined;
+  return cleaned.length > 360 ? `${cleaned.slice(0, 357)}...` : cleaned;
+}
+
+function countResults(value: JsonValue): number {
+  if (Array.isArray(value)) return value.length;
+  if (!isObject(value)) return 0;
+  for (const key of ["results", "matches", "items", "memories", "nodes", "events"]) {
+    const items = value[key];
+    if (Array.isArray(items)) return items.length;
+  }
+  return 0;
+}
+
+function countResultsFromPath(value: JsonValue, path: string[]): number {
+  let cursor: JsonValue = value;
+  for (const key of path) {
+    if (!isObject(cursor)) return 0;
+    cursor = cursor[key] ?? null;
+  }
+  return countResults(cursor);
+}
+
+function ratio(numerator: number, denominator: number): number {
+  if (denominator <= 0) return numerator;
+  return Math.round((numerator / denominator) * 100) / 100;
+}
+
+function clampScore(value: number): number {
+  return Math.max(0, Math.min(100, value));
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function requireString(args: Args, field: string, maxLength: number): string {
   const value = args[field];
   if (typeof value !== "string" || value.trim().length === 0) {
@@ -609,6 +1214,11 @@ function optionalStringArray(args: Args, field: string, maxLength: number, maxIt
 function optionalNumber(args: Args, field: string): number | undefined {
   const value = args[field];
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function optionalBoolean(args: Args, field: string): boolean | undefined {
+  const value = args[field];
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function optionalEnum<T extends string>(args: Args, field: string, allowed: readonly T[]): T | undefined {

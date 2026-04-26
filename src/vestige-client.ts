@@ -54,7 +54,7 @@ export class VestigeClient {
       capabilities: {},
       clientInfo: {
         name: "ahagraph",
-        version: "0.1.0"
+        version: "0.2.0"
       }
     });
     this.notify("notifications/initialized", {});

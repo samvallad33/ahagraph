@@ -54,6 +54,24 @@ try {
   assert.equal(brief.isError, undefined, extractText(brief));
   assert.match(extractText(brief), /AhaGraph|brief|Rust ownership|library checkout/i);
 
+  const profile = await callAhaGraphTool(runtime, "profile", {
+    topic: "Rust ownership",
+    limit: 3
+  });
+
+  assert.equal(profile.isError, undefined, extractText(profile));
+  assert.match(extractText(profile), /learnerProfile|Rust ownership|assistantRules/i);
+
+  const synthesis = await callAhaGraphTool(runtime, "synthesis", {
+    topic: "Zig comptime",
+    task: "explain it using concepts that already clicked",
+    depth: "normal",
+    limit: 3
+  });
+
+  assert.equal(synthesis.isError, undefined, extractText(synthesis));
+  assert.match(extractText(synthesis), /teachingPlan|outputContract|Zig comptime/i);
+
   const transfer = await callAhaGraphTool(runtime, "transfer", {
     from_concept: "Rust ownership",
     to_concept: "Zig comptime",
@@ -80,7 +98,37 @@ try {
   assert.equal(review.isError, undefined, extractText(review));
   assert.match(extractText(review), /due_for_review|reviewPrompt/i);
 
-  console.log("AhaGraph smoke test passed: captured aha/confusion/failure, recalled, transferred, graphed, and found review candidates.");
+  const shareCard = await callAhaGraphTool(runtime, "share_aha_card", {
+    concept: "Rust ownership",
+    public_aha: "Ownership clicked when I stopped thinking about variables and started thinking about who currently has the book.",
+    audience: "developers"
+  });
+
+  assert.equal(shareCard.isError, undefined, extractText(shareCard));
+  assert.match(extractText(shareCard), /share_aha_card|Powered by AhaGraph|Rust ownership/i);
+
+  const teachMode = await callAhaGraphTool(runtime, "teach_differently", {
+    topic: "React effects",
+    learner_signal: "too_abstract",
+    goal: "fix stale interval callbacks",
+    current_explanation: "Effects run after render, so put the interval in the effect.",
+    remember_attempt: true,
+    limit: 3
+  });
+
+  assert.equal(teachMode.isError, undefined, extractText(teachMode));
+  assert.match(extractText(teachMode), /teach_differently|too_abstract|concrete example/i);
+
+  const velocity = await callAhaGraphTool(runtime, "learning_velocity", {
+    topic: "Rust ownership",
+    window_days: 30,
+    limit: 10
+  });
+
+  assert.equal(velocity.isError, undefined, extractText(velocity));
+  assert.match(extractText(velocity), /learning_velocity|velocityScore|momentum/i);
+
+  console.log("AhaGraph smoke test passed: captured, recalled, profiled, synthesized, transferred, graphed, reviewed, carded, retaught, and measured learning velocity.");
 } finally {
   await vestige.close();
 }
