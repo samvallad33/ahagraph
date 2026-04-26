@@ -1,5 +1,5 @@
 {
-  "name": "@samvallad33/ahagraph",
+  "name": "ahagraph",
   "version": "0.1.0",
   "description": "AhaGraph maps the explanations, confusions, and concepts that make code click. Powered by Vestige.",
   "type": "module",
